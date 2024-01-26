@@ -1,20 +1,83 @@
-version: '3'
+version: "3"
+
+x-service: &service
+  restart: unless-stopped
+  stop_grace_period: 3s
+  stdin_open: true
+  tty: true
+
+x-assets: &assets
+  build:
+    context: .
+    target: assets
+    args:
+      - ENV=development
+  volumes:
+    - .:/app
+
+x-app: &app
+  build:
+    context: .
+    target: app
+    args:
+      - ENV=development
+  environment:
+    - DOCKER_DEFAULT_PLATFORM=linux/amd64
+    - PIDFILE=/tmp/pids/server.pid
+    - POSTGRES_HOST=postgres
+    - REDIS_URL=redis://redis:6379/0
+  volumes:
+    - .:/app
+  tmpfs:
+    - /tmp/pids/
 
 services:
-  web:
-    build: .
+  caddy:
+    <<: *service
+    image: caddy:2
     ports:
-      - "6969:6969"
-    depends_on:
-      - db
-    environment:
-      - HOST=0.0.0.0
-  db:
-    image: postgres:latest
-    environment:
-      POSTGRES_PASSWORD: pass
+      - 80:80
+      - 443:443
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_config:/config
+      - caddy_data:/data
+
+  postgres:
+    <<: *service
+    image: postgres:14
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres:/var/lib/postgresql/data
+
+  redis:
+    <<: *service
+    image: redis:6.2
+    volumes:
+      - redis:/var/lib/redis/data
+
+  js:
+    <<: [*service, *assets]
+    command: bash -c "yarn install --check && yarn build --watch"
+
+  css:
+    <<: [*service, *assets]
+    command: bash -c "yarn install --check && yarn build:css --watch"
+
+  app:
+    <<: [*service, *app]
+    command: bash -c "bundle install && rails db:prepare && rails s"
+    ports:
+      - "9696:9696"
+
+  job:
+    <<: [*service, *app]
+    command: bash -c "bundle install && sidekiq"
 
 volumes:
-  postgres-data:
+  caddy_config:
+  caddy_data:
+  postgres:
+  redis:
