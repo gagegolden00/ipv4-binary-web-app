@@ -17,5 +17,5 @@ COPY . .
 EXPOSE 6969
 
 # Start the Rails application
-CMD ["rails", "server", "-b", "0.0.0.0", "-p", "6969"]
+CMD ["rails", "server", "-b", "localhost", "-p", "6969"]
 
